@@ -29,11 +29,13 @@ class Renderer(object):
     self.vpw = 0
     self.vpx = 0
     self.vpy = 0
+    
 
   def createWindow(self, width, height):
     self.width = width
     self.height = height
     self.clear()
+
 
   def setViewPort(self, x, y, width, height):
     self.vph = height
@@ -99,11 +101,8 @@ class Renderer(object):
     windowY = int(y01 * self.vph + self.vpy)
     self.point(windowX, windowY)
   
-  def line(self, nx0, ny0, nx1, ny1):
-    x0 = int((nx0+1)/2 * self.vpw + self.vpx)
-    x1 = int((nx1+1)/2 * self.vpw + self.vpx)
-    y0 = int((ny0+1)/2 * self.vph + self.vpy)
-    y1 = int((ny1+1)/2 * self.vph + self.vpy)
+  def line(self, x0, y0, x1, y1):
+
     dy = abs(y1 - y0)
     dx = abs(x1 - x0)
     steep = dy > dx
@@ -118,19 +117,110 @@ class Renderer(object):
     threshold =  dx
     y = y0
 
+    points = []
     for x in range(x0, x1, 1 if x0 < x1 else -1):
 
       if steep:
-        self.point(y, x)
+        points.append((y, x))
       else:
-        self.point(x, y)
+        points.append((x, y))
 
       offset += 2 * dy
 
       if offset >= threshold:
-        y += 1 if y0 < y1 else -1
+        if y0 < y1: y += 1
+        else: y -= 1
         threshold += 2 * dx
+      
+    for point in points:
+      self.point(*point)
   
+  def fill(self):
+    lastFull = False
+
+    frameBuffer1 = [[self.clear_color for x in range(self.width)] for y in range(self.height)]
+    frameBuffer2 = [[self.clear_color for x in range(self.width)] for y in range(self.height)]
+    frameBuffer3 = [[self.clear_color for x in range(self.width)] for y in range(self.height)]
+    frameBuffer4 = [[self.clear_color for x in range(self.width)] for y in range(self.height)]
+
+    for x in range(self.width):
+      for y in range(self.height):
+        frameBuffer1[y][x] = self.framebuffer[y][x]
+        frameBuffer2[y][x] = self.framebuffer[y][x]
+        frameBuffer3[y][x] = self.framebuffer[y][x]
+        frameBuffer4[y][x] = self.framebuffer[y][x]
+
+    #left to right
+    for y in range(self.height):
+      interior = False
+      for x in range(self.width):
+        if frameBuffer1[y][x] != WHITE:
+          if not lastFull:
+            interior = not interior
+          lastFull = True
+        else:
+          lastFull = False
+          if interior:
+            frameBuffer1[y][x] = self.current_color
+
+    #right to left
+    for y in range(self.height):
+      interior = False
+      for x in range(self.width-1, -1, -1):
+        if frameBuffer2[y][x] != WHITE:
+          if not lastFull:
+            interior = not interior
+          lastFull = True
+        else:
+          lastFull = False
+          if interior:
+            frameBuffer2[y][x] = self.current_color
+    
+    #bottom to top
+    for x in range(self.width):
+      interior = False
+      for y in range(self.height):
+        if frameBuffer3[y][x] != WHITE:
+          if not lastFull:
+            interior = not interior
+          lastFull = True
+        else:
+          lastFull = False
+          if interior:
+            frameBuffer3[y][x] = self.current_color
+
+    #top to bottom
+    for x in range(self.width):
+      interior = False
+      for y in range(self.height-1, -1, -1):
+        if frameBuffer4[y][x] != WHITE:
+          if not lastFull:
+            interior = not interior
+          lastFull = True
+        else:
+          lastFull = False
+          if interior:
+            frameBuffer4[y][x] = self.current_color
+
+    for x in range(self.width):
+      for y in range(self.height):
+        agrees = 0
+        agreeColor = None
+        if frameBuffer1[y][x] == frameBuffer2[y][x] == frameBuffer3[y][x]:
+          agrees += 1
+          agreeColor = frameBuffer1[y][x]
+        if frameBuffer2[y][x] == frameBuffer3[y][x] == frameBuffer4[y][x]:
+          agrees += 1
+          agreeColor = frameBuffer2[y][x]
+        if frameBuffer3[y][x] == frameBuffer4[y][x] == frameBuffer1[y][x]:
+          agrees += 1
+          agreeColor = frameBuffer3[y][x]
+        if frameBuffer4[y][x] == frameBuffer1[y][x] == frameBuffer2[y][x]:
+          agrees += 1
+          agreeColor = frameBuffer4[y][x]
+
+        if agrees >= 1:
+          self.framebuffer[y][x] = agreeColor
 
 def glInit():
   global r
@@ -188,10 +278,7 @@ def glColor(R, G, B):
 
 def glLine(x0, y0, x1, y1):
   if r and r.width > 0 and r.height > 0:
-    if (x0 >= -1 and y0 >= -1 and x1 >= -1 and y1 >= -1) and (x0 <= 1 and y0 <= 1 and x1 <= 1 and y1 <= 1):
-      r.line(x0, y0, x1, y1)
-    else:
-      print("Invalid values for line limits")
+    r.line(x0, y0, x1, y1)
   else:
     print("Bad window")
 
@@ -201,10 +288,27 @@ def glFinish():
   else:
     print("Bad window")
 
-
 glInit()
 glCreateWindow(1001, 1001)
 glViewPort(0, 0, 1000, 1000)
-glLine(-1,1,0,-1)
 
+glClearColor(1, 1, 1)
+glClear()
+
+glColor(1, 0, 0)
+
+poligons = [
+  [(165, 380), (185, 360), (180, 330), (207, 345), (233, 330), (230, 360), (250, 380), (220, 385), (205, 410), (193, 383)],
+  [(321, 335), (288, 286), (339, 251), (374, 302)],
+  [(377, 249), (411, 197), (436, 249)],
+  [(413, 177), (448, 159), (502, 88), (553, 53), (535, 36), (676, 37), (660, 52), (750, 145), (761, 179), (672, 192), (659, 214), (615, 214), (632, 230), (580, 230), (597, 215), (552, 214), (517, 144), (466, 180)],
+  [(682, 175), (708, 120), (735, 148), (739, 170)],
+]
+
+for poligon in poligons:
+  for i in range(len(poligon)):
+    glLine(poligon[i][0], poligon[i][1], poligon[(i + 1) % len(poligon)][0], poligon[(i + 1) % len(poligon)][1])
+
+
+r.fill()
 glFinish()
