@@ -51,6 +51,7 @@ class Renderer(object):
 
   def clear(self):
     self.framebuffer = [[self.clear_color for x in range(self.width)] for y in range(self.height)]
+    self.xbuffer = [[-9999 for x in range(self.width)] for y in range(self.height)]
   
   def setClearColor(self, color):
     self.clear_color = color
@@ -151,7 +152,7 @@ class Renderer(object):
     self.vertexLine(A, B)
     self.vertexLine(B, C)
     self.vertexLine(C, A)
-
+  '''
   def triangle(self, A, B, C):
     if A.y > B.y:
       A, B = B, A
@@ -168,7 +169,6 @@ class Renderer(object):
 
     dx_ab = B.x - A.x
     dy_ab = B.y - A.y
-    
     mi_ab = dx_ab/dy_ab
 
     for y in range(A.y, B.y +1):
@@ -194,6 +194,56 @@ class Renderer(object):
 
       for x in range(xi, xf + 1):
         self.point(x, y)
+  '''
+  def triangle(self, A, B, C):
+    xmin, xmax, ymin, ymax = self.bbox(A, B, C)
+
+    for x in range(xmin, xmax + 1):
+      for y in range(ymin, ymax + 1):
+        P = V2(x, y)
+        w, v, u = self.barycentric(A, B, C, P)
+        if w < 0 or v < 0 or u < 0:
+          continue
+
+        #z = 
+        self.point(x, y)
+        self.zbuffer[y][x] = z
+
+  def bbox(self, A, B, C):
+    xmin = A.x
+    xmax = A.x
+    if B.x < xmin: xmin = B.x
+    if C.x < xmin: xmin = C.x
+
+    if B.x > xmax: xmax = B.x
+    if C.x > xmax: xmax = C.x
+
+    ymin = A.y
+    ymax = A.y
+    if B.y < ymin: ymin = B.y
+    if C.y < ymin: ymin = C.y
+
+    if B.y > ymax: ymax = B.y
+    if C.y > ymax: ymax = C.y
+    return xmin, xmax, ymin, ymax
+
+  def cross(self, v0, v1):
+    cx = v0.y * v1.z - v0.z * v1.y
+    cy = v0.z * v1.x - v0.x * v1.z
+    cz = v0.x * v1.y - v0.y * v1.x
+
+    if cz == 0:
+      pass
+    return cx, cy, cz
+
+  def barycentric(self, A, B, C, P):
+    cx, cy, cz = self.cross(V3(B.x - A.x, C.x - A.x, A.x - P.x), V3(B.y - A.y, C.y - A.y, A.y - P.y))
+
+    u = cx / cz
+    v = cy / cz
+    w = 1 - u - v
+
+    return w, v, u
 
   def load(self, filename, translate, scale):
     model = Obj(filename)
@@ -214,6 +264,7 @@ class Renderer(object):
         if (x1 >= -1 and y1 >= -1 and x2 >= -1 and y2 >= -1) and (x1 <= 1 and y1 <= 1 and x2 <= 1 and y2 <= 1):
           self.line(x1, y1, x2, y2)
   
+
 
 def glInit():
   global r

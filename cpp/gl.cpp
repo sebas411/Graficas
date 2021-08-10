@@ -1,6 +1,5 @@
 #include <iostream>
 #include <fstream>
-#include <cstdint>
 #include <stdlib.h>
 #include <algorithm>
 #include <vector>
@@ -9,6 +8,24 @@
 
 using namespace std;
 
+class V2 {
+	public:
+	int x, y;
+	V2(int x, int y){
+		this->x = x;
+		this->y = y;
+	}
+};
+
+class V3 {
+	public:
+	int x, y, z;
+	V3(int x, int y, int z){
+		this->x = x;
+		this->y = y;
+		this->z = z;
+	}
+};
 
 class Renderer {
 	private:
@@ -16,7 +33,17 @@ class Renderer {
 	vector<vector<vector<unsigned char>>> framebuffer;
 	unsigned char currentColor[3] = {255, 255, 255};
 	unsigned char clearColor[3] = {0, 0, 0};
-	
+
+	void initVector(){
+		for (int y = 0; y < height; y++){
+			vector<vector<unsigned char>> line;
+			for (int x = 0; x < width; x++){
+				vector<unsigned char> color = {0, 0, 0};
+				line.push_back(color);
+			}
+			framebuffer.push_back(line);
+		}
+	}
 	
 	void insertColor(int x, int y, unsigned char* col) {
 		for (int i=0; i<3;i++){
@@ -24,6 +51,10 @@ class Renderer {
 		}
 	}
 	
+	void point(int x, int y){
+		insertColor(x, y, currentColor);
+	}
+
 	void write(string filename){
 		ofstream f;
 		f.open(filename);
@@ -117,68 +148,7 @@ class Renderer {
 		
 	}
 	
-	
-	public:
-	
-	void createWindow(int width, int height){
-		this->width=width;
-		this->height=height;
-		initVector();
-	}
-	
-	void setViewPort(int x, int y, int width, int height){
-		this->vpx = x;
-		this->vpy = y;
-		this->vpw = width;
-		this->vph = height;
-		
-	}
-	
-	void setClearColor(unsigned char clearColor[3]){
-		for (int i=0; i<3;i++){
-			this->clearColor[i] = clearColor[i];
-		}
-	}
-	
-	void setCurrentColor(unsigned char color[3]){
-		for (int i=0; i<3;i++){
-			this->currentColor[i] = color[i];
-		}
-	}
-	
-	void initVector(){
-		for (int y = 0; y < height; y++){
-			vector<vector<unsigned char>> line;
-			for (int x = 0; x < width; x++){
-				vector<unsigned char> color = {0, 0, 0};
-				line.push_back(color);
-			}
-			framebuffer.push_back(line);
-		}
-	}
-	
-	void clear(){
-		for (int y = 0; y < (int)framebuffer.size(); y++) {
-			for (int x = 0; x < (int)framebuffer[y].size(); x++) {
-				insertColor(x, y, clearColor);
-			}
-		}
-	}
-	
-	void drawVertex(float x, float y){
-		int wx = (int)((x + 1)/2 * vpw + vpx);
-		int wy = (int)((y + 1)/2 * vph + vpy);
-		if(wx == vpw) wx -= 1;
-		if(wy == vph) wy -= 1;
-		point(wx, wy);
-	}
-	
-	void drawLine(float nx0, float ny0, float nx1, float ny1){
-		int x0 = (int)((nx0 + 1)/2 * vpw + vpx);
-		int x1 = (int)((nx1 + 1)/2 * vpw + vpx);
-		int y0 = (int)((ny0 + 1)/2 * vph + vpy);
-		int y1 = (int)((ny1 + 1)/2 * vph + vpy);
-		
+	void denormalizedLine(int x0, int y0, int x1, int y1){
 		int dy = abs(y1 - y0);
 		int dx = abs(x1 - x0);
 		bool steep = dy > dx;
@@ -211,7 +181,127 @@ class Renderer {
 			}
 		}
 	}
+
+	void vertexLine(V2 A, V2 B){
+		this->denormalizedLine(A.x, A.y, B.x, B.y);
+	}
+
+	auto bbox(V2 A, V2 B, V2 C){
+		int xmin = A.x;
+		int xmax = A.x;
+		if (B.x < xmin) xmin = B.x;
+    if (C.x < xmin) xmin = C.x;
+
+    if (B.x > xmax) xmax = B.x;
+    if (C.x > xmax) xmax = C.x;
+
+    int ymin = A.y;
+    int ymax = A.y;
+    if (B.y < ymin) ymin = B.y;
+    if (C.y < ymin) ymin = C.y;
+
+    if (B.y > ymax) ymax = B.y;
+    if (C.y > ymax) ymax = C.y;
+
+		struct retVals {int i1, i2, i3, i4;};
+    return retVals{xmin, xmax, ymin, ymax};
+	}
+
+	auto cross(V3 v0, V3 v1){
+		int cx = v0.y * v1.z - v0.z * v1.y;
+		int cy = v0.z * v1.x - v0.x * v1.z;
+    int cz = v0.x * v1.y - v0.y * v1.x;
+
+		//NOTA
+		struct retVals {int i1, i2, i3;};
+		return retVals{cx, cy, cz};
+	}
+
+	auto barycentric(V2 A, V2 B, V2 C, V2 P){
+		auto [cx, cy, cz] = cross(
+			V3(B.x - A.x, C.x - A.x, A.x - P.x),
+			V3(B.y - A.y, C.y - A.y, A.y - P.y)
+		);
+		float u = (float) cx / cz;
+		float v = (float) cy / cz;
+		float w = 1 - (u + v);
+		struct retVals{float f1, f2, f3;};
+		return retVals{w, v, u};
+	}
+
+	public:
 	
+	void createWindow(int width, int height){
+		this->width=width;
+		this->height=height;
+		initVector();
+	}
+	
+	void setViewPort(int x, int y, int width, int height){
+		this->vpx = x;
+		this->vpy = y;
+		this->vpw = width;
+		this->vph = height;
+		
+	}
+	
+	void setClearColor(unsigned char clearColor[3]){
+		for (int i=0; i<3;i++){
+			this->clearColor[i] = clearColor[i];
+		}
+	}
+	
+	void setCurrentColor(unsigned char color[3]){
+		for (int i=0; i<3;i++){
+			this->currentColor[i] = color[i];
+		}
+	}
+	
+	void clear(){
+		for (int y = 0; y < (int)framebuffer.size(); y++) {
+			for (int x = 0; x < (int)framebuffer[y].size(); x++) {
+				insertColor(x, y, clearColor);
+			}
+		}
+	}
+	
+	void drawVertex(float x, float y){
+		int wx = (int)((x + 1)/2 * vpw + vpx);
+		int wy = (int)((y + 1)/2 * vph + vpy);
+		if(wx == vpw) wx -= 1;
+		if(wy == vph) wy -= 1;
+		point(wx, wy);
+	}
+
+	void drawLine(float nx0, float ny0, float nx1, float ny1){
+		int x0 = (int)((nx0 + 1)/2 * vpw + vpx);
+		int x1 = (int)((nx1 + 1)/2 * vpw + vpx);
+		int y0 = (int)((ny0 + 1)/2 * vph + vpy);
+		int y1 = (int)((ny1 + 1)/2 * vph + vpy);
+		
+		this->denormalizedLine(x0, y0, x1, y1);
+		
+	}
+	
+	void wireframeTriangle(V2 A, V2 B, V2 C){
+		this->vertexLine(A, B);
+		this->vertexLine(B, C);
+		this->vertexLine(C, A);
+	}
+
+	void fillTriangle(V2 A, V2 B, V2 C){
+		auto [xmin, xmax, ymin, ymax] = this->bbox(A, B, C);
+
+		for(int x = xmin; x <= xmax; x++){
+			for(int y = ymin; y <= ymax; y++){
+				V2 P(x, y);
+				auto [w, v, u] = this->barycentric(A, B, C, P);
+				if(w < 0 | v < 0 | u < 0) continue;
+				this->point(x, y);
+			}
+		}
+	}
+
 	void loadModel(string filename, float tx, float ty, float sx, float sy){
 		Obj model(filename);
 		
@@ -240,16 +330,11 @@ class Renderer {
 		write("image.bmp");
 	}
 	
-	void point(int x, int y){
-		insertColor(x, y, currentColor);
-	}
 };
 
 Renderer ren;
 
-void glInit(){
-	
-}
+void glInit(){}
 
 void glCreateWindow(int width, int height){
 	ren.createWindow(width, height);
@@ -288,33 +373,21 @@ void glFinish() {ren.render();}
 int main() {
 	glCreateWindow(1003, 1003);
 	glViewPort(0, 0, 1000, 1000);
-	glColor(0.5, 0, 0.5);
-	/*glVertex(1, 0);
-	for (float i = -1; i <= 1; i += 0.001){
-		glVertex(i, -1);
-		glVertex(i, 1);
-		glVertex(-1, i);
-		glVertex(1, i);
-	}*/
-	
-	/*glLine(-1, -1, 1, 1);
-	glLine(-1, -1, 0, 1);
-	glLine(-1, -1, 1, 0);
-	glLine(1, -1, -1, 0);
-	glLine(1, -1, -1, 1);
-	glLine(1, -1, 0, 1);
-	glLine(-1, 1, 1, -1);
-	glLine(-1, 1, 0, -1);
-	glLine(-1, 1, 1, 0);
-	glLine(1, 1, -1, 0);
-	glLine(1, 1, -1, -1);
-	glLine(1, 1, 0, -1);
-	glLine(0, 1, 0, -1);
-	glLine(-1, 0, 1, 0);*/
+	glColor(0.5, 0, 0);
 
-	glLoad("./models/indoor plant_02.obj", 0, -3, 0.25, 0.25);
+	//glLoad("./models/indoor plant_02.obj", 0, -3, 0.25, 0.25);
+
+	ren.wireframeTriangle(V2(10, 70),  V2(50, 160), V2(70, 80));
+	ren.wireframeTriangle(V2(180, 50), V2(150, 1),  V2(70, 180));
+	ren.wireframeTriangle(V2(180, 150), V2(120, 160), V2(130, 180));
+
+	glColor(0.5, 0, 0.5);
+	ren.fillTriangle(V2(10, 70),  V2(50, 160), V2(70, 80));
+	//ren.fillTriangle(V2(180, 50), V2(150, 1),  V2(70, 180));
+	//ren.fillTriangle(V2(180, 150), V2(120, 160), V2(130, 180));
+	//auto [u, v, w] = ren.barycentric(V2(10, 70),  V2(50, 160), V2(70, 80), V2(65, 100));
+	//cout<< u << v << w;
 	glFinish();
-	
 	
 	return 0;
 }
