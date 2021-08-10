@@ -188,10 +188,15 @@ class Renderer {
 			swap(x1, y1);
 			swap(dx, dy);
 		}
+
+		if(x0 > x1){
+			swap(x0, x1);
+			swap(y0, y1);
+		}
 		
 		int offset = 0;
 		int threshold = dx;
-		int y = y0;
+		int y = y0;		
 		
 		for(int x = x0; x <= x1; x++){
 			if(steep){point(y, x);}
@@ -291,11 +296,23 @@ int main() {
 		glVertex(-1, i);
 		glVertex(1, i);
 	}*/
-	/*
-	glLine(-1, -1, 1, 1);
+	
+	/*glLine(-1, -1, 1, 1);
 	glLine(-1, -1, 0, 1);
-	glLine(-1, -1, 1, 0);*/
-	glLoad("./models/indoor plant_02.obj", 0, -3, 0.5, 0.5);
+	glLine(-1, -1, 1, 0);
+	glLine(1, -1, -1, 0);
+	glLine(1, -1, -1, 1);
+	glLine(1, -1, 0, 1);
+	glLine(-1, 1, 1, -1);
+	glLine(-1, 1, 0, -1);
+	glLine(-1, 1, 1, 0);
+	glLine(1, 1, -1, 0);
+	glLine(1, 1, -1, -1);
+	glLine(1, 1, 0, -1);
+	glLine(0, 1, 0, -1);
+	glLine(-1, 0, 1, 0);*/
+
+	glLoad("./models/indoor plant_02.obj", 0, -3, 0.25, 0.25);
 	glFinish();
 	
 	
