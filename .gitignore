@@ -1,1 +1,9 @@
 .vscode
+cpp
+cpp/gl.o
+cpp/image.bmp
+python/image.bmp
+__pycache__
+Tareas/lab1/image.bmp
+Tareas/line/image.bmp
+Tareas/point/image.bmp
