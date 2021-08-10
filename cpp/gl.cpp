@@ -388,6 +388,6 @@ int main() {
 	//auto [u, v, w] = ren.barycentric(V2(10, 70),  V2(50, 160), V2(70, 80), V2(65, 100));
 	//cout<< u << v << w;
 	glFinish();
-	
+	//prueba
 	return 0;
 }
