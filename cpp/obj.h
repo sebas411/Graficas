@@ -11,7 +11,7 @@ using namespace std;
 class Obj {
 	public:
 	vector<string> lines;
-	vector<vector<float>> vertices;
+	vector<vector<double>> vertices;
 	vector<vector<vector<int>>> faces;
 	//vector<vector<char>> faces;
 	
@@ -32,13 +32,13 @@ class Obj {
 			if(lines[i][0] == 'v' and lines[i][1] == ' '){
 				stringstream line(lines[i]);
 				string v, x, y, z;
-				vector<float> vertex;
+				vector<double> vertex;
 				//store line in the variables
 				line >> v >> x >> y >> z;
 				//push variables to vector
-				vertex.push_back(stof(x));
-				vertex.push_back(stof(y));
-				vertex.push_back(stof(z));
+				vertex.push_back(stod(x));
+				vertex.push_back(stod(y));
+				vertex.push_back(stod(z));
 				//push vector to vertices list
 				vertices.push_back(vertex);
 				

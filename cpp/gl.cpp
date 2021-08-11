@@ -3,10 +3,16 @@
 #include <stdlib.h>
 #include <algorithm>
 #include <vector>
+#include <time.h>
 
 #include "obj.h"
 
 using namespace std;
+
+struct Color{
+	unsigned char r, g, b;
+	bool selected = true;
+	};
 
 class V2 {
 	public:
@@ -17,10 +23,34 @@ class V2 {
 	}
 };
 
+class nV2 {
+	public:
+	float x, y;
+	nV2(float x, float y){
+		this->x = x;
+		this->y = y;
+	}
+};
+
 class V3 {
 	public:
-	int x, y, z;
-	V3(int x, int y, int z){
+	int x, y;
+	double z;
+	V3(int x, int y, double z){
+		this->x = x;
+		this->y = y;
+		this->z = z;
+	}
+	V2 toV2(){
+		return V2(x, y);
+	}
+};
+
+class nV3 {
+	public:
+	float x, y;
+	double z;
+	nV3(float x, float y, double z){
 		this->x = x;
 		this->y = y;
 		this->z = z;
@@ -31,17 +61,21 @@ class Renderer {
 	private:
 	int width, height, vpx, vpy, vpw, vph;
 	vector<vector<vector<unsigned char>>> framebuffer;
+	vector<vector<double>> zbuffer;
 	unsigned char currentColor[3] = {255, 255, 255};
 	unsigned char clearColor[3] = {0, 0, 0};
 
 	void initVector(){
 		for (int y = 0; y < height; y++){
 			vector<vector<unsigned char>> line;
+			vector<double> zline;
 			for (int x = 0; x < width; x++){
 				vector<unsigned char> color = {0, 0, 0};
 				line.push_back(color);
+				zline.push_back(-999999999999999999999999.0);
 			}
 			framebuffer.push_back(line);
+			zbuffer.push_back(zline);
 		}
 	}
 	
@@ -51,8 +85,12 @@ class Renderer {
 		}
 	}
 	
+	void point(int x, int y, unsigned char* color){
+		insertColor(x, y, color);
+	}
+
 	void point(int x, int y){
-		insertColor(x, y, currentColor);
+		point(x, y, currentColor);
 	}
 
 	void write(string filename){
@@ -212,7 +250,6 @@ class Renderer {
 		int cy = v0.z * v1.x - v0.x * v1.z;
     int cz = v0.x * v1.y - v0.y * v1.x;
 
-		//NOTA
 		struct retVals {int i1, i2, i3;};
 		return retVals{cx, cy, cz};
 	}
@@ -222,10 +259,14 @@ class Renderer {
 			V3(B.x - A.x, C.x - A.x, A.x - P.x),
 			V3(B.y - A.y, C.y - A.y, A.y - P.y)
 		);
-		float u = (float) cx / cz;
-		float v = (float) cy / cz;
-		float w = 1 - (u + v);
-		struct retVals{float f1, f2, f3;};
+		struct retVals{double f1, f2, f3;};
+
+		if(cz == 0) return retVals{-1, -1, -1};
+
+		double u = (double) cx / cz;
+		double v = (double) cy / cz;
+		double w = 1 - (u + v);
+		
 		return retVals{w, v, u};
 	}
 
@@ -289,17 +330,34 @@ class Renderer {
 		this->vertexLine(C, A);
 	}
 
-	void fillTriangle(V2 A, V2 B, V2 C){
-		auto [xmin, xmax, ymin, ymax] = this->bbox(A, B, C);
+	void fillTriangle(V3 A, V3 B, V3 C, Color color = Color{0, 0, 0, false}){
+		auto [xmin, xmax, ymin, ymax] = this->bbox(A.toV2(), B.toV2(), C.toV2());
+		//if(xmin < vpx | xmax > (vpx + vpw) | ymin < vpy | ymax > (vpy +vph)) return;
 
 		for(int x = xmin; x <= xmax; x++){
 			for(int y = ymin; y <= ymax; y++){
 				V2 P(x, y);
-				auto [w, v, u] = this->barycentric(A, B, C, P);
+				auto [w, v, u] = this->barycentric(A.toV2(), B.toV2(), C.toV2(), P);
 				if(w < 0 | v < 0 | u < 0) continue;
-				this->point(x, y);
+				if(x < vpx | x > (vpx + vpw) | y < vpy | y > (vpy +vph)) continue;
+				float z = A.z * w + B.z * v + C.z * u;
+				if(z > zbuffer[y][x]){
+					if(color.selected){
+						unsigned char newCol[3] = {color.r, color.g, color.b}; 
+						this->point(x, y, newCol);
+					}
+					else this->point(x, y);
+					zbuffer[y][x] = z;
+				}
 			}
 		}
+	}
+
+	void fillTriangle(nV3 nA, nV3 nB, nV3 nC, Color color = Color{0, 0, 0, false}){
+		V3 A((int)((nA.x + 1)/2 * vpw + vpx), (int)((nA.y + 1)/2 * vph + vpy), nA.z);
+		V3 B((int)((nB.x + 1)/2 * vpw + vpx), (int)((nB.y + 1)/2 * vph + vpy), nA.z);
+		V3 C((int)((nC.x + 1)/2 * vpw + vpx), (int)((nC.y + 1)/2 * vph + vpy), nA.z);
+		fillTriangle(A, B, C, color);
 	}
 
 	void loadModel(string filename, float tx, float ty, float sx, float sy){
@@ -307,20 +365,43 @@ class Renderer {
 		
 		for(int i = 0; i < (int)model.faces.size(); i++){
 			vector<vector<int>> face = model.faces[i];
-			
-			for(int j = 0; j < (int)face.size(); j++){
-				int f1 = face[j][0];
-				int f2 = face[(j+1) % (int)face.size()][0];
+			if (face.size() == 3){
+				int f1 = face[0][0] - 1;
+				int f2 = face[1][0] - 1;
+				int f3 = face[2][0] - 1;
+				nV3 A ((model.vertices[f1][0] + tx)*sx, (model.vertices[f1][1] + ty)*sy, model.vertices[f1][2] * 10000000.0);
+				nV3 B ((model.vertices[f2][0] + tx)*sx, (model.vertices[f2][1] + ty)*sy, model.vertices[f2][2] * 10000000.0);
+				nV3 C ((model.vertices[f3][0] + tx)*sx, (model.vertices[f3][1] + ty)*sy, model.vertices[f3][2] * 10000000.0);
+				cout << A.x << A.y << endl;
+				this->fillTriangle(A, B, C, Color{(unsigned char)(rand() % 255), (unsigned char)(rand() % 255), (unsigned char)(rand() % 255)});
+			} else if (face.size() == 4){
+				int f1 = face[0][0] - 1;
+				int f2 = face[1][0] - 1;
+				int f3 = face[2][0] - 1;
+				int f4 = face[3][0] - 1;
+
+				nV3 A ((model.vertices[f1][0] + tx)*sx, (model.vertices[f1][1] + ty)*sy, model.vertices[f1][2] * 10000000.0);
+				nV3 B ((model.vertices[f2][0] + tx)*sx, (model.vertices[f2][1] + ty)*sy, model.vertices[f2][2] * 10000000.0);
+				nV3 C ((model.vertices[f3][0] + tx)*sx, (model.vertices[f3][1] + ty)*sy, model.vertices[f3][2] * 10000000.0);
+				nV3 D ((model.vertices[f4][0] + tx)*sx, (model.vertices[f4][1] + ty)*sy, model.vertices[f4][2] * 10000000.0);
 				
-				vector<float> v1 = model.vertices[f1 - 1];
-				vector<float> v2 = model.vertices[f2 - 1];
-				
-				float x1 = (v1[0] + tx) * sx;
-				float y1 = (v1[1] + ty) * sy;
-				float x2 = (v2[0] + tx) * sx;
-				float y2 = (v2[1] + ty) * sy;
-				if((x1 >= -1 && y1 >= -1 && x2 >= -1 && y2 >= -1) && (x1 <= 1 && y1 <= 1 && x2 <= 1 && y2 <= 1)){
-					drawLine(x1, y1, x2, y2);
+				this->fillTriangle(A, B, C, Color{(unsigned char)(rand() % 255), (unsigned char)(rand() % 255), (unsigned char)(rand() % 255)});
+				this->fillTriangle(A, D, C, Color{(unsigned char)(rand() % 255), (unsigned char)(rand() % 255), (unsigned char)(rand() % 255)});
+			} else {
+				for(int j = 0; j < (int)face.size(); j++){
+					int f1 = face[j][0];
+					int f2 = face[(j+1) % (int)face.size()][0];
+					
+					vector<double> v1 = model.vertices[f1 - 1];
+					vector<double> v2 = model.vertices[f2 - 1];
+					
+					float x1 = (v1[0] + tx) * sx;
+					float y1 = (v1[1] + ty) * sy;
+					float x2 = (v2[0] + tx) * sx;
+					float y2 = (v2[1] + ty) * sy;
+					if((x1 >= -1 && y1 >= -1 && x2 >= -1 && y2 >= -1) && (x1 <= 1 && y1 <= 1 && x2 <= 1 && y2 <= 1)){
+						drawLine(x1, y1, x2, y2);
+					}
 				}
 			}
 		}
@@ -371,22 +452,14 @@ void glLoad(string filename, float tx, float ty, float sx, float sy){
 void glFinish() {ren.render();}
 
 int main() {
+	srand(time(NULL));
 	glCreateWindow(1003, 1003);
-	glViewPort(0, 0, 1000, 1000);
-	glColor(0.5, 0, 0);
+	glViewPort(100, 100, 800, 800);
+	glColor(0.5, 0.5, 0);
 
+	glLoad("./models/cube2.obj", 0, 0, 0.65, 0.65);
 	//glLoad("./models/indoor plant_02.obj", 0, -3, 0.25, 0.25);
-
-	ren.wireframeTriangle(V2(10, 70),  V2(50, 160), V2(70, 80));
-	ren.wireframeTriangle(V2(180, 50), V2(150, 1),  V2(70, 180));
-	ren.wireframeTriangle(V2(180, 150), V2(120, 160), V2(130, 180));
-
-	glColor(0.5, 0, 0.5);
-	ren.fillTriangle(V2(10, 70),  V2(50, 160), V2(70, 80));
-	//ren.fillTriangle(V2(180, 50), V2(150, 1),  V2(70, 180));
-	//ren.fillTriangle(V2(180, 150), V2(120, 160), V2(130, 180));
-	//auto [u, v, w] = ren.barycentric(V2(10, 70),  V2(50, 160), V2(70, 80), V2(65, 100));
-	//cout<< u << v << w;
+	
 	glFinish();
 	//prueba
 	return 0;
