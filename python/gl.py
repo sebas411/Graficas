@@ -205,7 +205,7 @@ class Renderer(object):
         if w < 0 or v < 0 or u < 0:
           continue
 
-        #z = 
+        z = A.z * w + B.z * v + C.z * u
         self.point(x, y)
         self.zbuffer[y][x] = z
 
