@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <vector>
 #include <time.h>
+#include <cmath>
 
 #include "obj.h"
 
@@ -13,6 +14,7 @@ struct Color{
 	unsigned char r, g, b;
 	bool selected = true;
 	};
+
 
 class V2 {
 	public:
@@ -32,7 +34,7 @@ class nV2 {
 	}
 };
 
-class V3 {
+/*class V3 {
 	public:
 	int x, y;
 	double z;
@@ -44,7 +46,7 @@ class V3 {
 	V2 toV2(){
 		return V2(x, y);
 	}
-};
+};*/
 
 class nV3 {
 	public:
@@ -55,6 +57,7 @@ class nV3 {
 		this->y = y;
 		this->z = z;
 	}
+	V2 toV2(){return V2((int) x, (int) y);}
 };
 
 class Renderer {
@@ -64,6 +67,7 @@ class Renderer {
 	vector<vector<double>> zbuffer;
 	unsigned char currentColor[3] = {255, 255, 255};
 	unsigned char clearColor[3] = {0, 0, 0};
+	nV3 light = nV3(0, 0, 1);
 
 	void initVector(){
 		for (int y = 0; y < height; y++){
@@ -245,19 +249,19 @@ class Renderer {
     return retVals{xmin, xmax, ymin, ymax};
 	}
 
-	auto cross(V3 v0, V3 v1){
-		int cx = v0.y * v1.z - v0.z * v1.y;
-		int cy = v0.z * v1.x - v0.x * v1.z;
-    int cz = v0.x * v1.y - v0.y * v1.x;
+	auto cross(nV3 v0, nV3 v1){
+		double cx = v0.y * v1.z - v0.z * v1.y;
+		double cy = v0.z * v1.x - v0.x * v1.z;
+    double cz = v0.x * v1.y - v0.y * v1.x;
 
-		struct retVals {int i1, i2, i3;};
+		struct retVals {double i1, i2, i3;};
 		return retVals{cx, cy, cz};
 	}
 
 	auto barycentric(V2 A, V2 B, V2 C, V2 P){
 		auto [cx, cy, cz] = cross(
-			V3(B.x - A.x, C.x - A.x, A.x - P.x),
-			V3(B.y - A.y, C.y - A.y, A.y - P.y)
+			nV3(B.x - A.x, C.x - A.x, A.x - P.x),
+			nV3(B.y - A.y, C.y - A.y, A.y - P.y)
 		);
 		struct retVals{double f1, f2, f3;};
 
@@ -268,6 +272,33 @@ class Renderer {
 		double w = 1 - (u + v);
 		
 		return retVals{w, v, u};
+	}
+
+	nV3 sub(nV3 v0, nV3 v1){
+		return nV3(
+      v0.x - v1.x,
+      v0.y - v1.y,
+      v0.z - v1.z
+    );
+	}
+
+	double length(nV3 v0) {
+		return pow(pow(v0.x, 2) + pow(v0.y, 2) + pow(v0.z, 2), 0.5);
+	}
+
+	nV3 norm(nV3 v0) {
+		double l = length(v0);
+		if (l == 0) return nV3(0, 0, 0);
+
+		return nV3(
+			v0.x/l,
+			v0.y/l,
+			v0.z/l
+		);
+	}
+
+	double dot(nV3 v0, nV3 v1){
+    return v0.x * v1.x + v0.y * v1.y + v0.z * v1.z;
 	}
 
 	public:
@@ -330,7 +361,11 @@ class Renderer {
 		this->vertexLine(C, A);
 	}
 
-	void fillTriangle(V3 A, V3 B, V3 C, Color color = Color{0, 0, 0, false}){
+	void fillTriangle(nV3 nA, nV3 nB, nV3 nC, Color color = Color{0, 0, 0, false}){
+		nV3 A((int)((nA.x + 1)/2 * vpw + vpx), (int)((nA.y + 1)/2 * vph + vpy), nA.z);
+		nV3 B((int)((nB.x + 1)/2 * vpw + vpx), (int)((nB.y + 1)/2 * vph + vpy), nA.z);
+		nV3 C((int)((nC.x + 1)/2 * vpw + vpx), (int)((nC.y + 1)/2 * vph + vpy), nA.z);
+		
 		auto [xmin, xmax, ymin, ymax] = this->bbox(A.toV2(), B.toV2(), C.toV2());
 		//if(xmin < vpx | xmax > (vpx + vpw) | ymin < vpy | ymax > (vpy +vph)) return;
 
@@ -353,15 +388,23 @@ class Renderer {
 		}
 	}
 
-	void fillTriangle(nV3 nA, nV3 nB, nV3 nC, Color color = Color{0, 0, 0, false}){
-		V3 A((int)((nA.x + 1)/2 * vpw + vpx), (int)((nA.y + 1)/2 * vph + vpy), nA.z);
-		V3 B((int)((nB.x + 1)/2 * vpw + vpx), (int)((nB.y + 1)/2 * vph + vpy), nA.z);
-		V3 C((int)((nC.x + 1)/2 * vpw + vpx), (int)((nC.y + 1)/2 * vph + vpy), nA.z);
-		fillTriangle(A, B, C, color);
+	void loadTrian(nV3 A, nV3 B, nV3 C, nV3 dA, nV3 dB, nV3 dC){
+		auto [a, b, c] = this->cross(sub(B, A), sub(C, A));
+		nV3 normal = norm(nV3(a, b, c));
+		double intensity = dot(normal, light);
+		//cout << intensity;
+		//printf("\ncross: x=%f y=%f z=%f", a, b, c);
+		//printf("\nnormal: x=%f y=%f z=%f\n", normal.x, normal.y, normal.z);
+		unsigned char grey = (unsigned char)(255 * intensity);
+		//cout << (int) grey << endl;
+
+		if (intensity >= 0) 
+		this->fillTriangle(dA, dB, dC, Color{0, (unsigned char)((int)grey*0.75), 0});
 	}
 
 	void loadModel(string filename, float tx, float ty, float sx, float sy){
 		Obj model(filename);
+		
 		
 		for(int i = 0; i < (int)model.faces.size(); i++){
 			vector<vector<int>> face = model.faces[i];
@@ -369,24 +412,36 @@ class Renderer {
 				int f1 = face[0][0] - 1;
 				int f2 = face[1][0] - 1;
 				int f3 = face[2][0] - 1;
-				nV3 A ((model.vertices[f1][0] + tx)*sx, (model.vertices[f1][1] + ty)*sy, model.vertices[f1][2] * 10000000.0);
-				nV3 B ((model.vertices[f2][0] + tx)*sx, (model.vertices[f2][1] + ty)*sy, model.vertices[f2][2] * 10000000.0);
-				nV3 C ((model.vertices[f3][0] + tx)*sx, (model.vertices[f3][1] + ty)*sy, model.vertices[f3][2] * 10000000.0);
-				cout << A.x << A.y << endl;
-				this->fillTriangle(A, B, C, Color{(unsigned char)(rand() % 255), (unsigned char)(rand() % 255), (unsigned char)(rand() % 255)});
+
+				nV3 A (model.vertices[f1][0], model.vertices[f1][1], model.vertices[f1][2]);
+				nV3 B (model.vertices[f2][0], model.vertices[f2][1], model.vertices[f2][2]);
+				nV3 C (model.vertices[f3][0], model.vertices[f3][1], model.vertices[f3][2]);
+
+				nV3 dA ((A.x + tx)*sx, (A.y + ty)*sy, A.z * 1000000.0);
+				nV3 dB ((B.x + tx)*sx, (B.y + ty)*sy, B.z * 1000000.0);
+				nV3 dC ((C.x + tx)*sx, (C.y + ty)*sy, C.z * 1000000.0);
+
+				this->loadTrian(A, B, C, dA, dB, dC);
+
 			} else if (face.size() == 4){
 				int f1 = face[0][0] - 1;
 				int f2 = face[1][0] - 1;
 				int f3 = face[2][0] - 1;
 				int f4 = face[3][0] - 1;
 
-				nV3 A ((model.vertices[f1][0] + tx)*sx, (model.vertices[f1][1] + ty)*sy, model.vertices[f1][2] * 10000000.0);
-				nV3 B ((model.vertices[f2][0] + tx)*sx, (model.vertices[f2][1] + ty)*sy, model.vertices[f2][2] * 10000000.0);
-				nV3 C ((model.vertices[f3][0] + tx)*sx, (model.vertices[f3][1] + ty)*sy, model.vertices[f3][2] * 10000000.0);
-				nV3 D ((model.vertices[f4][0] + tx)*sx, (model.vertices[f4][1] + ty)*sy, model.vertices[f4][2] * 10000000.0);
-				
-				this->fillTriangle(A, B, C, Color{(unsigned char)(rand() % 255), (unsigned char)(rand() % 255), (unsigned char)(rand() % 255)});
-				this->fillTriangle(A, D, C, Color{(unsigned char)(rand() % 255), (unsigned char)(rand() % 255), (unsigned char)(rand() % 255)});
+				nV3 A (model.vertices[f1][0], model.vertices[f1][1], model.vertices[f1][2]);
+				nV3 B (model.vertices[f2][0], model.vertices[f2][1], model.vertices[f2][2]);
+				nV3 C (model.vertices[f3][0], model.vertices[f3][1], model.vertices[f3][2]);
+				nV3 D (model.vertices[f4][0], model.vertices[f4][1], model.vertices[f4][2]);
+
+				nV3 dA ((A.x + tx)*sx, (A.y + ty)*sy, A.z * 1000000.0);
+				nV3 dB ((B.x + tx)*sx, (B.y + ty)*sy, B.z * 1000000.0);
+				nV3 dC ((C.x + tx)*sx, (C.y + ty)*sy, C.z * 1000000.0);
+				nV3 dD ((D.x + tx)*sx, (D.y + ty)*sy, D.z * 1000000.0);
+
+				this->loadTrian(A, B, C, dA, dB, dC);
+				this->loadTrian(A, C, D, dA, dC, dD);
+
 			} else {
 				for(int j = 0; j < (int)face.size(); j++){
 					int f1 = face[j][0];
@@ -457,8 +512,9 @@ int main() {
 	glViewPort(100, 100, 800, 800);
 	glColor(0.5, 0.5, 0);
 
-	glLoad("./models/cube2.obj", 0, 0, 0.65, 0.65);
-	//glLoad("./models/indoor plant_02.obj", 0, -3, 0.25, 0.25);
+	//glLoad("./models/model.obj", 0, 0, 0.85, 0.85);
+	//glLoad("./models/face.obj", 0, -10, 0.05, 0.05);
+	glLoad("./models/indoor plant_02.obj", 0, -3, 0.25, 0.25);
 	
 	glFinish();
 	//prueba
