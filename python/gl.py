@@ -1,6 +1,6 @@
 import struct
 from collections import namedtuple
-from typing import Coroutine
+import random
 from obj import Obj
 
 V2 = namedtuple('vertex2d', ['x', 'y'])
@@ -53,7 +53,7 @@ class Renderer(object):
 
   def clear(self):
     self.framebuffer = [[self.clear_color for x in range(self.width)] for y in range(self.height)]
-    self.zbuffer = [[-99_999_999 for x in range(self.width)] for y in range(self.height)]
+    self.zbuffer = [[-1e100 for x in range(self.width)] for y in range(self.height)]
   
   def setClearColor(self, color):
     self.clear_color = color
@@ -154,50 +154,12 @@ class Renderer(object):
     self.vertexLine(A, B)
     self.vertexLine(B, C)
     self.vertexLine(C, A)
-  '''
-  def triangle(self, A, B, C):
-    if A.y > B.y:
-      A, B = B, A
-
-    if A.y > C.y:
-      A, C = C, A
-
-    if B.y > C.y:
-      B, C = C, B
-
-    dx_ac = C.x - A.x
-    dy_ac = C.y - A.y
-    mi_ac = dx_ac/dy_ac
-
-    dx_ab = B.x - A.x
-    dy_ab = B.y - A.y
-    mi_ab = dx_ab/dy_ab
-
-    for y in range(A.y, B.y +1):
-      xi = round(A.x - mi_ac * (A.y - y))
-      xf = round(A.x - mi_ab * (A.y - y))
-
-      if xi > xf:
-        xi, xf = xf, xi
-
-      for x in range(xi, xf + 1):
-        self.point(x, y)
-
-    dx_bc = C.x - B.x
-    dy_bc = C.y - B.y
-    mi_bc = dx_bc/dy_bc
-
-    for y in range(B.y, C.y + 1):
-      xi = round(A.x - mi_ac * (A.y - y))
-      xf = round(B.x - mi_bc * (B.y - y))
-
-      if xi > xf:
-        xi, xf = xf, xi
-
-      for x in range(xi, xf + 1):
-        self.point(x, y)
-  '''
-  def triangle(self, A, B, C, color):
+  
+  def triangle(self, A, B, C, color=color(0, 0, 0), normalized=False):
+    if normalized:
+      A = V3(int((A.x + 1)/2 * self.vpw + self.vpx), int((A.y + 1)/2 * self.vph + self.vpy), A.z)
+      B = V3(int((B.x + 1)/2 * self.vpw + self.vpx), int((B.y + 1)/2 * self.vph + self.vpy), B.z)
+      C = V3(int((C.x + 1)/2 * self.vpw + self.vpx), int((C.y + 1)/2 * self.vph + self.vpy), C.z)
     xmin, xmax, ymin, ymax = self.bbox(A, B, C)
 
     for x in range(xmin, xmax + 1):
@@ -209,7 +171,7 @@ class Renderer(object):
 
         z = A.z * w + B.z * v + C.z * u
         if z > self.zbuffer[y][x]:
-          self.point(x, y)
+          self.point(x, y, color=color)
           self.zbuffer[y][x] = z
 
   def bbox(self, A, B, C):
@@ -240,7 +202,12 @@ class Renderer(object):
     return V3(cx, cy, cz)
 
   def barycentric(self, A, B, C, P):
-    cx, cy, cz = self.cross(V3(B.x - A.x, C.x - A.x, A.x - P.x), V3(B.y - A.y, C.y - A.y, A.y - P.y))
+    c = self.cross(V3(B.x - A.x, C.x - A.x, A.x - P.x), V3(B.y - A.y, C.y - A.y, A.y - P.y))
+    cx = c.x
+    cy = c.y
+    cz = c.z
+
+    if cz == 0: return 0, 0, 0
 
     u = cx / cz
     v = cy / cz
@@ -248,42 +215,80 @@ class Renderer(object):
 
     return w, v, u
 
+  def sub(self, v0, v1):
+    return V3(
+      v0.x - v1.x,
+      v0.y - v1.y,
+      v0.z - v1.z
+    )
+
+  def length(self, v0):
+    return (v0.x**2 + v0.y**2 + v0.z**2) ** 0.5
+  
+  def norm(self, v0):
+    l = self.length(v0)
+    if l == 0: return V3(0, 0, 0)
+
+    return V3(
+      v0.x/l,
+      v0.y/l,
+      v0.z/l
+    )
+  
+  def dot(self, v0, v1):
+    return v0.x * v1.x + v0.y * v1.y + v0.z * v1.z
+
   def load(self, filename, translate, scale):
     model = Obj(filename)
     tx = translate[0]
     ty = translate[1]
     sx = scale[0]
     sy = scale[1]
-    def calcTriangle():
-      pass
+    def calcTriangle(A, B, C):
+      dA = V3((A.x + tx)*sx, (A.y + ty)*sy, A.z * 1e90)
+      dB = V3((B.x + tx)*sx, (B.y + ty)*sy, B.z * 1e90)
+      dC = V3((C.x + tx)*sx, (C.y + ty)*sy, C.z * 1e90)
+      normal = self.norm(self.cross(
+        self.sub(B, A),
+        self.sub(C, A)
+      ))
+
+      intensity = self.dot(normal, self.light)
+
+      grey = round(255 * intensity)
+
+      if intensity >= 0:
+        self.triangle(dA, dB, dC, color=color(grey, grey, grey), normalized=True)
 
     for face in model.faces:
       vertexNum = len(face)
-      for j in range(vertexNum):
-        if vertexNum == 3:
-          f1 = face[0][0] - 1
-          f2 = face[1][0] - 1
-          f3 = face[2][0] - 1
-          B = V3((model.vertices[f2][0] + tx)*sx, (model.vertices[f2][1] + ty)*sy, model.vertices[f2][2] * 10_000_000)
-          A = V3((model.vertices[f1][0] + tx)*sx, (model.vertices[f1][1] + ty)*sy, model.vertices[f1][2] * 10_000_000)
-          C = V3((model.vertices[f3][0] + tx)*sx, (model.vertices[f3][1] + ty)*sy, model.vertices[f3][2] * 10_000_000)
-          normal = self.norm(self.cross(
-            self.sub(B, A),
-            self.sub(C, A)
-          ))
-
-          intensity = self.dot(normal, self.light)
-
-          grey = round(255 * intensity)
-
-          if intensity < 0:
-            continue
+      
+      if vertexNum == 3:
+        f1 = face[0][0] - 1
+        f2 = face[1][0] - 1
+        f3 = face[2][0] - 1
+        A = V3(model.vertices[f1][0], model.vertices[f1][1], model.vertices[f1][2])
+        B = V3(model.vertices[f2][0], model.vertices[f2][1], model.vertices[f2][2])
+        C = V3(model.vertices[f3][0], model.vertices[f3][1], model.vertices[f3][2])
         
-          self.triangle(A, B, C, grey)
+        calcTriangle(A, B, C)
 
-        elif vertexNum == 4:
-          pass
-        else:  
+      elif vertexNum == 4:
+        f1 = face[0][0] - 1
+        f2 = face[1][0] - 1
+        f3 = face[2][0] - 1
+        f4 = face[3][0] - 1
+        A = V3(model.vertices[f1][0], model.vertices[f1][1], model.vertices[f1][2])
+        B = V3(model.vertices[f2][0], model.vertices[f2][1], model.vertices[f2][2])
+        C = V3(model.vertices[f3][0], model.vertices[f3][1], model.vertices[f3][2])
+        D = V3(model.vertices[f4][0], model.vertices[f4][1], model.vertices[f4][2])
+        
+
+        calcTriangle(A, B, C)
+        calcTriangle(A, C, D)
+
+      else:
+        for j in range(vertexNum):
           f1 = face[j][0]
           f2 = face[(j+1) % vertexNum][0]
 
@@ -297,29 +302,10 @@ class Renderer(object):
           if (x1 >= -1 and y1 >= -1 and x2 >= -1 and y2 >= -1) and (x1 <= 1 and y1 <= 1 and x2 <= 1 and y2 <= 1):
             self.line(x1, y1, x2, y2)
   
-  def sub(v0, v1):
-    return V3(
-      v0.x - v1.x,
-      v0.y - v1.y,
-      v0.z - v1.z
-    )
-
-  def length(v0):
-    return (v0.x**2 + v0.y**2 + v0.z**2) ** 0.5
   
-  def norm(self, v0):
-    l = self.length(v0)
-    if l == 0: return V3(0, 0, 0)
 
-    return V3(
-      v0.x,
-      v0.y,
-      v0.z
-    )
-  
-  def dot(v0, v1):
-    return v0.x * v1.x + v0.y * v1.y + v0.z * v1.z
 
+#GLs start
 
 def glInit():
   global r
@@ -403,6 +389,6 @@ def glFinish():
 glInit()
 glCreateWindow(1000, 1000)
 glViewPort(50, 50, 900, 900)
-glLoad("./models/indoor plant_02.obj", (0, 0), (0.25, 0.25))
+glLoad("./models/model.obj", (0, 0), (0.75, 0.75))
 
 glFinish()
