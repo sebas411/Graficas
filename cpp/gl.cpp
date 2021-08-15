@@ -67,7 +67,20 @@ class Renderer {
 	vector<vector<double>> zbuffer;
 	unsigned char currentColor[3] = {255, 255, 255};
 	unsigned char clearColor[3] = {0, 0, 0};
-	nV3 light = nV3(0, -0.9486832981, 0.316227766);
+	nV3 light = nV3(0, 0, 1);
+	double background = -9e200;
+
+	auto getExtremes(){
+		double min = zbuffer[0][0], max = zbuffer[0][0];
+		for (int y = 0; y < height; y++){
+			for (int x = 0; x < width; x++){
+				if (zbuffer[y][x] != background && (min == background || zbuffer[y][x] < min)) min = zbuffer[y][x];
+				if (zbuffer[y][x] > max) max = zbuffer[y][x];
+			}
+		}
+		struct retVals{double a, b;};
+		return retVals{min, max};
+	}
 
 	void initVector(){
 		for (int y = 0; y < height; y++){
@@ -76,7 +89,7 @@ class Renderer {
 			for (int x = 0; x < width; x++){
 				vector<unsigned char> color = {0, 0, 0};
 				line.push_back(color);
-				zline.push_back(-9e200);
+				zline.push_back(background);
 			}
 			framebuffer.push_back(line);
 			zbuffer.push_back(zline);
@@ -301,6 +314,20 @@ class Renderer {
     return v0.x * v1.x + v0.y * v1.y + v0.z * v1.z;
 	}
 
+	void loadTrian(nV3 A, nV3 B, nV3 C, nV3 dA, nV3 dB, nV3 dC){
+		auto [a, b, c] = this->cross(sub(B, A), sub(C, A));
+		nV3 normal = norm(nV3(a, b, c));
+		double intensity = dot(normal, light);
+		//cout << intensity;
+		//printf("\ncross: x=%f y=%f z=%f", a, b, c);
+		//printf("\nnormal: x=%f y=%f z=%f\n", normal.x, normal.y, normal.z);
+		unsigned char grey = (unsigned char)(255 * intensity);
+		//cout << (int) grey << endl;
+
+		if (intensity >= 0) 
+		this->fillTriangle(dA, dB, dC, Color{0, (unsigned char)((int)grey*0.75), 0});
+	}
+
 	public:
 	
 	void createWindow(int width, int height){
@@ -388,20 +415,6 @@ class Renderer {
 		}
 	}
 
-	void loadTrian(nV3 A, nV3 B, nV3 C, nV3 dA, nV3 dB, nV3 dC){
-		auto [a, b, c] = this->cross(sub(B, A), sub(C, A));
-		nV3 normal = norm(nV3(a, b, c));
-		double intensity = dot(normal, light);
-		//cout << intensity;
-		//printf("\ncross: x=%f y=%f z=%f", a, b, c);
-		//printf("\nnormal: x=%f y=%f z=%f\n", normal.x, normal.y, normal.z);
-		unsigned char grey = (unsigned char)(255 * intensity);
-		//cout << (int) grey << endl;
-
-		if (intensity >= 0) 
-		this->fillTriangle(dA, dB, dC, Color{0, (unsigned char)((int)grey*0.75), 0});
-	}
-
 	void loadModel(string filename, float tx, float ty, float sx, float sy){
 		Obj model(filename);
 		
@@ -466,6 +479,25 @@ class Renderer {
 		write("image.bmp");
 	}
 	
+	void renderZbuffer(){
+		auto [min, max] = getExtremes();
+		double diff = max - min;
+		// formula:  x -> (x - min) * 255 / diff
+		for (int y = 0; y < height; y++){
+			for (int x = 0; x < width; x++){
+				double number = zbuffer[y][x];
+				if (number == background) {
+					unsigned char Blue[3] = {0, 0, 255};
+					point(x, y, Blue);
+					continue;
+				}
+				unsigned char intensity = (unsigned char) ((int)((number - min) * 255 / diff));
+				unsigned char newCol[3] = {intensity, intensity, intensity};
+				point(x, y, newCol);
+			}
+		}
+		write("zbuffer.bmp");
+	}
 };
 
 Renderer ren;
@@ -516,6 +548,7 @@ int main() {
 	//glLoad("./models/face.obj", 0, -10, 0.05, 0.05);
 	glLoad("./models/plantita.obj", 0, -3, 0.25, 0.25);
 	glFinish();
+	ren.renderZbuffer();
 	//prueba
 	return 0;
 }
