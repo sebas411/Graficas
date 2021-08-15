@@ -67,7 +67,7 @@ class Renderer {
 	vector<vector<double>> zbuffer;
 	unsigned char currentColor[3] = {255, 255, 255};
 	unsigned char clearColor[3] = {0, 0, 0};
-	nV3 light = nV3(0, 0, 1);
+	nV3 light = nV3(0, -0.9486832981, 0.316227766);
 
 	void initVector(){
 		for (int y = 0; y < height; y++){
@@ -76,7 +76,7 @@ class Renderer {
 			for (int x = 0; x < width; x++){
 				vector<unsigned char> color = {0, 0, 0};
 				line.push_back(color);
-				zline.push_back(-999999999999999999999999.0);
+				zline.push_back(-9e200);
 			}
 			framebuffer.push_back(line);
 			zbuffer.push_back(zline);
@@ -417,9 +417,9 @@ class Renderer {
 				nV3 B (model.vertices[f2][0], model.vertices[f2][1], model.vertices[f2][2]);
 				nV3 C (model.vertices[f3][0], model.vertices[f3][1], model.vertices[f3][2]);
 
-				nV3 dA ((A.x + tx)*sx, (A.y + ty)*sy, A.z * 1000000.0);
-				nV3 dB ((B.x + tx)*sx, (B.y + ty)*sy, B.z * 1000000.0);
-				nV3 dC ((C.x + tx)*sx, (C.y + ty)*sy, C.z * 1000000.0);
+				nV3 dA ((A.x + tx)*sx, (A.y + ty)*sy, A.z * 1e10);
+				nV3 dB ((B.x + tx)*sx, (B.y + ty)*sy, B.z * 1e10);
+				nV3 dC ((C.x + tx)*sx, (C.y + ty)*sy, C.z * 1e10);
 
 				this->loadTrian(A, B, C, dA, dB, dC);
 
@@ -434,10 +434,10 @@ class Renderer {
 				nV3 C (model.vertices[f3][0], model.vertices[f3][1], model.vertices[f3][2]);
 				nV3 D (model.vertices[f4][0], model.vertices[f4][1], model.vertices[f4][2]);
 
-				nV3 dA ((A.x + tx)*sx, (A.y + ty)*sy, A.z * 1000000.0);
-				nV3 dB ((B.x + tx)*sx, (B.y + ty)*sy, B.z * 1000000.0);
-				nV3 dC ((C.x + tx)*sx, (C.y + ty)*sy, C.z * 1000000.0);
-				nV3 dD ((D.x + tx)*sx, (D.y + ty)*sy, D.z * 1000000.0);
+				nV3 dA ((A.x + tx)*sx, (A.y + ty)*sy, A.z * 1e10);
+				nV3 dB ((B.x + tx)*sx, (B.y + ty)*sy, B.z * 1e10);
+				nV3 dC ((C.x + tx)*sx, (C.y + ty)*sy, C.z * 1e10);
+				nV3 dD ((D.x + tx)*sx, (D.y + ty)*sy, D.z * 1e10);
 
 				this->loadTrian(A, B, C, dA, dB, dC);
 				this->loadTrian(A, C, D, dA, dC, dD);
@@ -508,14 +508,13 @@ void glFinish() {ren.render();}
 
 int main() {
 	srand(time(NULL));
-	glCreateWindow(1003, 1003);
-	glViewPort(100, 100, 800, 800);
+	glCreateWindow(1001, 1001);
+	glViewPort(0, 0, 1000, 1000);
 	glColor(0.5, 0.5, 0);
 
 	//glLoad("./models/model.obj", 0, 0, 0.85, 0.85);
 	//glLoad("./models/face.obj", 0, -10, 0.05, 0.05);
-	glLoad("./models/indoor plant_02.obj", 0, -3, 0.25, 0.25);
-	
+	glLoad("./models/plantita.obj", 0, -3, 0.25, 0.25);
 	glFinish();
 	//prueba
 	return 0;
